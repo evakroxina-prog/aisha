@@ -40,7 +40,11 @@
   function rewCandidatePaths(n) {
     const stem = `rew${n}`;
     const paths = [];
+    for (const ext of ["jpg", "JPG", "jpeg", "JPEG"]) {
+      paths.push(`${stem}.${ext}`);
+    }
     for (const prefix of ASSET_PATH_PREFIXES) {
+      if (!prefix) continue;
       for (const ext of ["jpg", "JPG", "jpeg", "JPEG"]) {
         paths.push(`${prefix}${stem}.${ext}`);
       }
@@ -111,10 +115,6 @@
     });
   }
 
-  function wireRewImage(img, n) {
-    wireImageCandidates(img, rewCandidatePaths(n));
-  }
-
   function prefetchPortfolioImages() {
     const add = () => {
       REW_INDICES.forEach((n) => {
@@ -161,31 +161,41 @@
     return Math.round((u - 0.5) * 5 * 10) / 10;
   }
 
-  function buildHeroCircularGallery() {
+  async function buildHeroCircularGallery() {
     const root = document.getElementById("hero-circular-root");
     if (!root) return;
 
+    const settled = await Promise.allSettled(
+      REW_INDICES.map((n) => preloadFirstUrl(rewCandidatePaths(n))),
+    );
+    const slides = REW_INDICES
+      .map((n, i) =>
+        settled[i].status === "fulfilled" ? { n, src: settled[i].value } : null,
+      )
+      .filter(Boolean);
+
+    if (!slides.length) return;
+
     const section = document.createElement("section");
     section.className = "hero-circular-gallery";
-    section.style.setProperty("--count", String(REW_INDICES.length));
+    section.style.setProperty("--count", String(slides.length));
     section.setAttribute("aria-label", "Примеры работ");
 
     const rotator = document.createElement("div");
     rotator.className = "hero-circular-gallery__rotator";
 
-    REW_INDICES.forEach((n, idx) => {
+    slides.forEach((slide, idx) => {
       const card = document.createElement("article");
       card.className = "hero-circular-gallery__item";
-      card.id = `hero-gallery-${n}`;
-      card.dataset.title = `Работа ${n}`;
+      card.id = `hero-gallery-${slide.n}`;
       card.style.setProperty("--i", String(idx + 1));
 
       const a = document.createElement("a");
       a.href = "#works";
       a.className = "hero-circular-gallery__link";
       const img = document.createElement("img");
-      wireRewImage(img, n);
-      img.alt = `Пример работы ${n}`;
+      img.src = slide.src;
+      img.alt = "";
       img.loading = idx < 5 ? "eager" : "lazy";
       img.decoding = "async";
       if (idx < 3) img.fetchPriority = "high";
