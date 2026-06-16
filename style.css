@@ -968,9 +968,12 @@ a {
 .about-photo img {
   position: relative;
   z-index: 1;
+  display: block;
   width: 100%;
   object-fit: cover;
   aspect-ratio: 4/5;
+  min-height: 280px;
+  background: linear-gradient(145deg, #ece3d4 0%, #d9c9a8 55%, #c9b48c 100%);
   box-shadow: 0 30px 60px rgba(11, 47, 56, 0.12);
 }
 

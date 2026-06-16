@@ -4,9 +4,21 @@
   const REW_INDICES = Array.from({ length: 20 }, (_, i) => i + 1);
   const ASSET_PATH_PREFIXES = ["", "images/", "img/", "photos/", "works/", "assets/"];
 
+  function masterPhotoCandidates() {
+    const names = ["master", "master1"];
+    const exts = ["png", "PNG", "jpg", "JPG"];
+    const paths = [];
+    for (const name of names) {
+      for (const ext of exts) {
+        paths.push(`${name}.${ext}`);
+      }
+    }
+    return paths;
+  }
+
   function assetCandidatePaths(stem) {
     const aliasMap = {
-      master: ["Master", "master1", "aisha"],
+      master: ["Master", "Master1"],
       hero2: ["hero", "Hero2", "hero1"],
       logo_aisha: ["logo", "Logo_aisha", "logo-aisha"],
       rewiev1: ["review1", "rewiew1", "Rewiev1"],
@@ -26,30 +38,43 @@
   }
 
   function rewCandidatePaths(n) {
-    return assetCandidatePaths(`rew${n}`);
+    const stem = `rew${n}`;
+    const paths = [];
+    for (const prefix of ASSET_PATH_PREFIXES) {
+      for (const ext of ["jpg", "JPG", "jpeg", "JPEG"]) {
+        paths.push(`${prefix}${stem}.${ext}`);
+      }
+    }
+    return paths;
   }
 
   function wireImageCandidates(img, paths) {
-    const initial = img.getAttribute("src") || "";
-    const ordered =
-      initial && paths.includes(initial)
-        ? paths
-        : initial
-          ? [initial, ...paths.filter((p) => p !== initial)]
-          : paths;
-    let idx = ordered.indexOf(initial);
-    if (idx < 0) idx = 0;
-    if (img.complete && img.naturalWidth === 0 && initial) {
-      idx = Math.min(idx + 1, ordered.length);
+    const initial = (img.getAttribute("src") || "").trim();
+    const ordered = [];
+    if (initial) ordered.push(initial);
+    for (const p of paths) {
+      if (!ordered.includes(p)) ordered.push(p);
     }
-    const tryAt = (i) => {
-      if (i < ordered.length) img.src = ordered[i];
+    if (ordered.length <= 1) return;
+
+    let nextIdx = 1;
+    const tryNext = () => {
+      while (nextIdx < ordered.length) {
+        const candidate = ordered[nextIdx];
+        nextIdx += 1;
+        if (candidate !== img.getAttribute("src")) {
+          img.src = candidate;
+          return;
+        }
+      }
     };
-    img.onerror = () => {
-      idx += 1;
-      tryAt(idx);
-    };
-    tryAt(idx);
+
+    img.addEventListener("error", tryNext);
+
+    // Уже упавшая загрузка (до attach listener) — пробуем следующий путь
+    if (img.complete && img.naturalWidth === 0) {
+      tryNext();
+    }
   }
 
   function initStaticImageFallbacks() {
@@ -57,6 +82,12 @@
       if (img.closest("#container") || img.closest(".hero-circular-gallery")) return;
       const src = img.getAttribute("src");
       if (!src || /^https?:/i.test(src) || src.startsWith("data:")) return;
+
+      if (img.closest(".about-photo")) {
+        wireImageCandidates(img, masterPhotoCandidates());
+        return;
+      }
+
       const stem = src.split("/").pop().replace(/\.[^.]+$/, "");
       if (!stem) return;
       wireImageCandidates(img, assetCandidatePaths(stem));
