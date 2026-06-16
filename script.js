@@ -1,32 +1,93 @@
 (() => {
   const mqReduce = window.matchMedia("(prefers-reduced-motion: reduce)");
 
-  const REW_FILES = [
-    "rew1.JPG",
-    "rew2.jpg",
-    "rew3.jpg",
-    "rew4.JPG",
-    "rew5.JPG",
-    "rew6.JPG",
-    "rew7.jpg",
-    "rew8.jpg",
-    "rew9.jpg",
-    "rew10.jpg",
-    "rew11.jpg",
-    "rew12.jpg",
-    "rew13.jpg",
-    "rew14.jpg",
-    "rew15.jpg",
-    "rew16.jpg",
-    "rew17.jpg",
-    "rew18.jpg",
-    "rew19.jpg",
-    "rew20.JPG",
-  ];
+  const REW_INDICES = Array.from({ length: 20 }, (_, i) => i + 1);
+  const ASSET_PATH_PREFIXES = ["", "images/", "img/", "photos/", "works/", "assets/"];
+
+  function assetCandidatePaths(stem) {
+    const aliasMap = {
+      master: ["Master", "master1", "aisha"],
+      hero2: ["hero", "Hero2", "hero1"],
+      logo_aisha: ["logo", "Logo_aisha", "logo-aisha"],
+      rewiev1: ["review1", "rewiew1", "Rewiev1"],
+      rewiev2: ["review2", "rewiew2", "Rewiev2"],
+      rewiev3: ["review3", "rewiew3", "Rewiev3"],
+    };
+    const stems = [stem, ...(aliasMap[stem] || [])];
+    const paths = [];
+    for (const s of stems) {
+      for (const prefix of ASSET_PATH_PREFIXES) {
+        for (const ext of ["png", "PNG", "jpg", "JPG", "jpeg", "JPEG", "webp", "WEBP"]) {
+          paths.push(`${prefix}${s}.${ext}`);
+        }
+      }
+    }
+    return paths;
+  }
+
+  function rewCandidatePaths(n) {
+    return assetCandidatePaths(`rew${n}`);
+  }
+
+  function wireImageCandidates(img, paths) {
+    const initial = img.getAttribute("src") || "";
+    const ordered =
+      initial && paths.includes(initial)
+        ? paths
+        : initial
+          ? [initial, ...paths.filter((p) => p !== initial)]
+          : paths;
+    let idx = ordered.indexOf(initial);
+    if (idx < 0) idx = 0;
+    if (img.complete && img.naturalWidth === 0 && initial) {
+      idx = Math.min(idx + 1, ordered.length);
+    }
+    const tryAt = (i) => {
+      if (i < ordered.length) img.src = ordered[i];
+    };
+    img.onerror = () => {
+      idx += 1;
+      tryAt(idx);
+    };
+    tryAt(idx);
+  }
+
+  function initStaticImageFallbacks() {
+    document.querySelectorAll("img[src]").forEach((img) => {
+      if (img.closest("#container") || img.closest(".hero-circular-gallery")) return;
+      const src = img.getAttribute("src");
+      if (!src || /^https?:/i.test(src) || src.startsWith("data:")) return;
+      const stem = src.split("/").pop().replace(/\.[^.]+$/, "");
+      if (!stem) return;
+      wireImageCandidates(img, assetCandidatePaths(stem));
+    });
+  }
+
+  function preloadFirstUrl(paths) {
+    return new Promise((resolve, reject) => {
+      let i = 0;
+      const im = new Image();
+      const tryNext = () => {
+        if (i >= paths.length) {
+          reject(new Error("not found"));
+          return;
+        }
+        im.src = paths[i++];
+      };
+      im.onload = () => resolve(im.currentSrc || im.src);
+      im.onerror = tryNext;
+      tryNext();
+    });
+  }
+
+  function wireRewImage(img, n) {
+    wireImageCandidates(img, rewCandidatePaths(n));
+  }
 
   function prefetchPortfolioImages() {
     const add = () => {
-      REW_FILES.forEach((href) => {
+      REW_INDICES.forEach((n) => {
+        const href = rewCandidatePaths(n)[0];
         const link = document.createElement("link");
         link.rel = "prefetch";
         link.as = "image";
@@ -56,12 +117,7 @@
   }
 
   function preloadImage(src) {
-    return new Promise((resolve, reject) => {
-      const im = new Image();
-      im.onload = () => resolve(src);
-      im.onerror = () => reject(new Error(src));
-      im.src = src;
-    });
+    return preloadFirstUrl([src]);
   }
 
   function seededTilt(i, seed) {
@@ -80,26 +136,25 @@
 
     const section = document.createElement("section");
     section.className = "hero-circular-gallery";
-    section.style.setProperty("--count", String(REW_FILES.length));
+    section.style.setProperty("--count", String(REW_INDICES.length));
     section.setAttribute("aria-label", "Примеры работ");
 
     const rotator = document.createElement("div");
     rotator.className = "hero-circular-gallery__rotator";
 
-    REW_FILES.forEach((src, idx) => {
-      const i = idx + 1;
+    REW_INDICES.forEach((n, idx) => {
       const card = document.createElement("article");
       card.className = "hero-circular-gallery__item";
-      card.id = `hero-gallery-${i}`;
-      card.dataset.title = `Работа ${i}`;
-      card.style.setProperty("--i", String(i));
+      card.id = `hero-gallery-${n}`;
+      card.dataset.title = `Работа ${n}`;
+      card.style.setProperty("--i", String(idx + 1));
 
       const a = document.createElement("a");
       a.href = "#works";
       a.className = "hero-circular-gallery__link";
       const img = document.createElement("img");
-      img.src = src;
-      img.alt = `Пример работы ${i}`;
+      wireRewImage(img, n);
+      img.alt = `Пример работы ${n}`;
       img.loading = idx < 5 ? "eager" : "lazy";
       img.decoding = "async";
       if (idx < 3) img.fetchPriority = "high";
@@ -138,9 +193,13 @@
     const uiEl = document.getElementById("ui");
     if (!container || !loadingEl) return;
 
-    const urls = shuffleStable([...REW_FILES], "works-wall-v2");
-    const settled = await Promise.allSettled(urls.map((href) => preloadImage(href)));
-    const ok = urls.filter((_, i) => settled[i].status === "fulfilled");
+    const indices = shuffleStable([...REW_INDICES], "works-wall-v2");
+    const settled = await Promise.allSettled(
+      indices.map((n) => preloadFirstUrl(rewCandidatePaths(n))),
+    );
+    const ok = settled
+      .filter((result) => result.status === "fulfilled")
+      .map((result) => result.value);
 
     if (ok.length === 0) {
       loadingEl.textContent = "Не удалось загрузить фото. Проверьте соединение и обновите страницу.";
@@ -301,6 +360,7 @@
     });
   }
 
+  initStaticImageFallbacks();
   initScrollMotion();
   initHeaderScroll();
 
